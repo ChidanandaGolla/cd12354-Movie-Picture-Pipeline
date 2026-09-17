@@ -469,3 +469,36 @@ kustomize build | kubectl apply -f -
 ## License
 
 [License](LICENSE.md)
+
+## GitHub Actions
+
+The repository includes separate CI and CD workflows for the backend and frontend in
+[.github/workflows/](.github/workflows/). CI runs on pull requests and changes to
+the corresponding application. CD runs on pushes to `main`, publishes an image
+tagged with the commit SHA to ECR, and rolls out the matching Kubernetes deployment.
+All Docker builds use the local reusable action at
+[.github/actions/docker-build/](.github/actions/docker-build/) with BuildKit
+cache reuse through GitHub Actions, which shortens repeat builds.
+
+Successful pull-request CI runs also post a status comment containing a link to
+the workflow run.
+
+Configure these repository settings before enabling deployment:
+
+* Secrets: `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
+* Variables: `AWS_REGION`, `EKS_CLUSTER_NAME`, and `BACKEND_API_URL`
+
+`BACKEND_API_URL` must be the backend load balancer URL, including the scheme
+(for example, `http://backend.example.com`). After deployment, the application
+URLs are available from the Kubernetes services:
+
+```bash
+kubectl get service backend frontend
+curl http://<backend-load-balancer>/movies
+```
+
+The backend response should contain the movie list:
+
+```json
+{"movies":[{"id":"123","title":"Top Gun: Maverick"},{"id":"456","title":"Sonic the Hedgehog"},{"id":"789","title":"A Quiet Place"}]}
+```

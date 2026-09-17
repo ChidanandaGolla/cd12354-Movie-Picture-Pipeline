@@ -1,0 +1,68 @@
+name: Backend CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "starter/backend/**"
+      - "setup/terraform/**"
+      - ".github/workflows/backend-cd.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-production
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'cluster' }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve backend image
+        id: image
+        run: |
+          repository=$(aws ecr describe-repositories \
+            --repository-names backend \
+            --query 'repositories[0].repositoryUri' \
+            --output text)
+          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image
+        uses: ./.github/actions/docker-build
+        with:
+          context: starter/backend
+          tags: ${{ steps.image.outputs.repository }}:${{ env.IMAGE_TAG }}
+          push: "true"
+          cache-scope: backend-cd
+
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Deploy backend
+        working-directory: starter/backend/k8s
+        run: |
+          kubectl kustomize . | sed "s|image: backend|image: ${{ steps.image.outputs.repository }}:${IMAGE_TAG}|" | kubectl apply -f -
+          kubectl rollout status deployment/backend --timeout=180s

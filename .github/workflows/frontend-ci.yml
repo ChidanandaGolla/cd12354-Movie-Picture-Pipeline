@@ -1,0 +1,73 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    paths:
+      - "starter/frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "starter/frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: starter/frontend
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: starter/frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: starter/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test -- --watchAll=false
+        env:
+          CI: true
+
+      - name: Build
+        run: npm run build
+        env:
+          REACT_APP_MOVIE_API_URL: ${{ vars.BACKEND_API_URL }}
+
+      - name: Build container
+        uses: ./.github/actions/docker-build
+        with:
+          context: starter/frontend
+          tags: movie-frontend:${{ github.sha }}
+          build-args: |
+            REACT_APP_MOVIE_API_URL=${{ vars.BACKEND_API_URL }}
+          cache-scope: frontend-ci
+
+  comment:
+    needs: test
+    if: github.event_name == 'pull_request' && needs.test.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment on pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr comment "$PR_URL" --body \
+            "Frontend CI passed for commit \`${GITHUB_SHA}\`. Linting, tests, the production build, and Docker build completed successfully. [View run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"

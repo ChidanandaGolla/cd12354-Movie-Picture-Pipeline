@@ -1,0 +1,67 @@
+name: Backend CI
+
+on:
+  pull_request:
+    paths:
+      - "starter/backend/**"
+      - ".github/workflows/backend-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "starter/backend/**"
+      - ".github/workflows/backend-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: starter/backend
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pipenv
+          cache-dependency-path: starter/backend/Pipfile.lock
+
+      - name: Install Pipenv
+        run: python -m pip install --upgrade pipenv
+
+      - name: Install dependencies
+        run: pipenv install --dev --deploy
+
+      - name: Lint
+        run: pipenv run lint
+
+      - name: Test
+        run: pipenv run test
+
+      - name: Build container
+        uses: ./.github/actions/docker-build
+        with:
+          context: starter/backend
+          tags: movie-backend:${{ github.sha }}
+          cache-scope: backend-ci
+
+  comment:
+    needs: test
+    if: github.event_name == 'pull_request' && needs.test.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment on pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr comment "$PR_URL" --body \
+            "Backend CI passed for commit \`${GITHUB_SHA}\`. Linting, tests, and the Docker build completed successfully. [View run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
