@@ -1,0 +1,42 @@
+name: Build Docker image
+description: Build a Docker image with shared BuildKit caching
+
+inputs:
+  context:
+    description: Docker build context
+    required: true
+  tags:
+    description: Image tags
+    required: true
+  push:
+    description: Push the image to its registry
+    required: false
+    default: "false"
+  load:
+    description: Load the image into the local Docker daemon
+    required: false
+    default: "false"
+  build-args:
+    description: Newline-delimited Docker build arguments
+    required: false
+    default: ""
+  cache-scope:
+    description: Unique GitHub Actions cache scope
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build image
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.context }}
+        tags: ${{ inputs.tags }}
+        push: ${{ inputs.push }}
+        load: ${{ inputs.load }}
+        build-args: ${{ inputs.build-args }}
+        cache-from: type=gha,scope=${{ inputs.cache-scope }}
+        cache-to: type=gha,mode=max,scope=${{ inputs.cache-scope }}
