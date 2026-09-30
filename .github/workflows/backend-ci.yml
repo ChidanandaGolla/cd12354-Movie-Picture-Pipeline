@@ -27,12 +27,12 @@ jobs:
         run: |
           cd starter/backend
           pip install pipenv
-          pipenv install --system --dev
+          pipenv install --dev
 
       - name: Run linter
         run: |
           cd starter/backend
-          flake8 .
+          pipenv run lint
 
   test:
     name: Test Backend
@@ -51,12 +51,12 @@ jobs:
         run: |
           cd starter/backend
           pip install pipenv
-          pipenv install --system --dev
+          pipenv install --dev
 
       - name: Run tests
         run: |
           cd starter/backend
-          pytest
+          PYTHONPATH=. pipenv run test
 
   build:
     name: Build Backend Docker Image
